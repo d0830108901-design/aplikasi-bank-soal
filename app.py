@@ -183,21 +183,29 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                 with st.expander("🎬 Lihat Video Petunjuk"):
                     st.video(hint_video_url)
 
-            # Input Jawaban Siswa
+            # Ekstraksi Opsi Jawaban
+            raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
+            if ";" in raw_opsi:
+                opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
+            else:
+                opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
+
+            # Input Jawaban Siswa Sesuai Tipe Soal
             user_ans = ""
-            tipe = str(soal["Tipe_Soal"]).upper()
+            tipe = str(soal["Tipe_Soal"]).upper().strip()
             
-            if tipe == "ISIAN":
-                user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_isian")
-            elif tipe in ["PG", "PILIHAN GANDA"]:
-                raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
-                # Mendukung pemisah koma (,) maupun titik koma (;)
-                if ";" in raw_opsi:
-                    opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
-                else:
-                    opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
-                    
+            if tipe in ["PGK", "PILIHAN GANDA KOMPLEKS"]:
+                st.write("Pilih satu atau lebih jawaban yang menurut Anda benar:")
+                selected_opts = []
+                for idx, opt in enumerate(opsi):
+                    checked = st.checkbox(opt, disabled=st.session_state.submitted, key=f"pgk_{idx}")
+                    if checked:
+                        selected_opts.append(opt)
+                user_ans = ", ".join(selected_opts)
+                
+            elif tipe in ["PG", "PILIHAN GANDA", "BS", "BENAR SALAH"]:
                 user_ans = st.radio("Pilih jawaban:", opsi, disabled=st.session_state.submitted, key="input_pg")
+                
             else:
                 user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_def")
                 
@@ -210,14 +218,19 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                 if not st.session_state.submitted:
                     if st.button(" Submit Jawaban", type="primary"):
                         if str(user_ans).strip() == "":
-                            st.warning("Isi jawaban terlebih dahulu!")
+                            st.warning("Pilih atau isi jawaban terlebih dahulu!")
                         else:
                             st.session_state.submitted = True
                             st.session_state.user_answer = str(user_ans).strip()
                             
                             # Evaluasi Jawaban
                             kunci = str(soal["Kunci_Jawaban"]).strip()
-                            if st.session_state.user_answer.lower() == kunci.lower():
+                            
+                            # Normalisasi pencocokan PGK / Text
+                            user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(",") if item.strip()])
+                            kunci_sorted = sorted([item.strip().lower() for item in kunci.replace(";", ",").split(",") if item.strip()])
+                            
+                            if user_ans_sorted == kunci_sorted:
                                 st.session_state.is_correct = True
                                 st.session_state.correct_per_level[soal["Level"]] += 1
                                 status_txt = "BENAR"
