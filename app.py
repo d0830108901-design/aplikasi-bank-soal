@@ -13,7 +13,7 @@ st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
 
 # URL Google Sheet publik untuk membaca bank soal
-EXCEL_URL = "https://docs.google.com/spreadsheets/d/15_mXJ8sEaR1B-_6z30Ym8h_KIn71Jp2a/export?format=xlsx"
+EXCEL_URL = "https://docs.google.com/spreadsheets/d/1ItV1GzJ_xEREEl3tiTZkA6KY0ks6yk2yBuIe3mZwqUw/edit?usp=sharing"
 
 @st.cache_data(ttl=60)
 def load_bank_soal():
