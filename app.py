@@ -9,10 +9,11 @@ import random
 # ==========================================
 st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-# Masukkan Web App URL Apps Script Anda di sini jika ada
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec" 
+# Web App URL Google Apps Script Anda untuk menyimpan data ke Log_Ujian
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
 
-EXCEL_URL = "https://docs.google.com/spreadsheets/d/15_mXJ8sEaR1B-_6z30Ym8h_KIn71Jp2a/export?format=xlsx" # URL Google Sheet publik Anda
+# URL Google Sheet publik untuk membaca bank soal
+EXCEL_URL = "https://docs.google.com/spreadsheets/d/15_mXJ8sEaR1B-_6z30Ym8h_KIn71Jp2a/export?format=xlsx"
 
 @st.cache_data(ttl=60)
 def load_bank_soal():
@@ -24,6 +25,23 @@ def load_bank_soal():
         return pd.DataFrame()
 
 df_soal = load_bank_soal()
+
+# Fungsi untuk Mengirim Data Hasil Soal ke Google Sheets via Apps Script
+def send_log_to_sheets(nama, kelas, id_soal, jawaban, status, skor):
+    if WEB_APP_URL.strip() == "":
+        return
+    payload = {
+        "nama": nama,
+        "kelas": kelas,
+        "id_soal": id_soal,
+        "jawaban": jawaban,
+        "status": status,
+        "skor": skor
+    }
+    try:
+        requests.post(WEB_APP_URL, data=json.dumps(payload), headers={"Content-Type": "application/json"})
+    except Exception as e:
+        st.warning(f"Gagal menyinkronkan data ke Google Sheets: {e}")
 
 # ==========================================
 # INISIALISASI SESSION STATE
@@ -72,7 +90,7 @@ def get_next_soal():
         (~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids))
     ]
     
-    # Jika soal di level aktif habis, ambil dari level acak yang tersedia
+    # Jika soal di level aktif habis, ambil dari level lain yang tersedia
     if available_soal.empty:
         available_soal = df_soal[~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids)]
         
@@ -195,17 +213,31 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                             if st.session_state.user_answer.lower() == kunci.lower():
                                 st.session_state.is_correct = True
                                 st.session_state.correct_per_level[soal["Level"]] += 1
+                                status_txt = "BENAR"
+                                skor_val = 10
                             else:
                                 st.session_state.is_correct = False
+                                status_txt = "SALAH"
+                                skor_val = 0
                                 
-                            # Simpan ke histori
+                            # Simpan ke histori lokal
                             st.session_state.history.append({
                                 "no": st.session_state.total_soal_dikerjakan + 1,
                                 "id_soal": soal["ID_Soal"],
                                 "level": soal["Level"],
                                 "jawaban": st.session_state.user_answer,
-                                "status": "BENAR" if st.session_state.is_correct else "SALAH"
+                                "status": status_txt
                             })
+
+                            # Kirim Log otomatis ke Google Sheets
+                            send_log_to_sheets(
+                                nama=st.session_state.nama,
+                                kelas=st.session_state.kelas,
+                                id_soal=int(soal["ID_Soal"]),
+                                jawaban=st.session_state.user_answer,
+                                status=status_txt,
+                                skor=skor_val
+                            )
                             st.rerun()
 
             # Tampilan Hasil Evaluasi & Petunjuk Scaffolding
