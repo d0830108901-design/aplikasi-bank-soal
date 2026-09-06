@@ -190,7 +190,13 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
             if tipe == "ISIAN":
                 user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_isian")
             elif tipe in ["PG", "PILIHAN GANDA"]:
-                opsi = str(soal["Opsi_Jawaban"]).split(";") if pd.notna(soal.get("Opsi_Jawaban")) else []
+                raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
+                # Mendukung pemisah koma (,) maupun titik koma (;)
+                if ";" in raw_opsi:
+                    opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
+                else:
+                    opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
+                    
                 user_ans = st.radio("Pilih jawaban:", opsi, disabled=st.session_state.submitted, key="input_pg")
             else:
                 user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_def")
