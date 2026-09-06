@@ -2,17 +2,14 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
-import random
+import re
 
 # ==========================================
 # KONFIGURASI DAN DATA
 # ==========================================
 st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-# Web App URL Google Apps Script Anda untuk menyimpan log jawaban ke Log_Ujian
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
-
-# URL Publikasi CSV Google Sheets Bank Soal Anda
 EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxH0HVZkDQamsnLf9XJeARLNHqxtlNDKBSu65Yor3D0-ll0RE9GsWEjQkYRpXAZDALFtqFgrCzzMIb/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
@@ -26,7 +23,6 @@ def load_bank_soal():
 
 df_soal = load_bank_soal()
 
-# Fungsi untuk Mengirim Data Hasil Soal ke Google Sheets via Apps Script
 def send_log_to_sheets(nama, kelas, id_soal, jawaban, status, skor):
     if not WEB_APP_URL.strip():
         return
@@ -78,26 +74,22 @@ def get_next_soal():
     if df_soal.empty:
         return None
     
-    # Cek level: Jika level aktif sudah memiliki 2 jawaban benar, naik level
     lvl = st.session_state.current_level
     while st.session_state.correct_per_level.get(lvl, 0) >= 2 and lvl < 4:
         lvl += 1
         st.session_state.current_level = lvl
         
-    # Filter soal di level aktif yang belum pernah dikerjakan
     available_soal = df_soal[
         (df_soal["Level"] == st.session_state.current_level) & 
         (~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids))
     ]
     
-    # Jika soal di level aktif habis, ambil dari level acak lain yang belum dikerjakan
     if available_soal.empty:
         available_soal = df_soal[~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids)]
         
     if available_soal.empty:
         return None
         
-    # Acak dan pilih 1 soal secara random
     selected = available_soal.sample(n=1).iloc[0]
     return selected
 
@@ -129,7 +121,6 @@ with st.sidebar:
 if role == "🧑‍🎓 Halaman Siswa (Kuis)":
     st.title("📝 Lembar Kerja Siswa (Kuis Adaptif)")
     
-    # Form Identitas Siswa
     if not st.session_state.quiz_started:
         st.info("Silakan isi nama dan kelas terlebih dahulu untuk memulai kuis (Maksimal 10 Soal).")
         col1, col2 = st.columns(2)
@@ -149,7 +140,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                 st.session_state.used_soal_ids = []
                 st.session_state.history = []
                 
-                # Pilih soal pertama
                 soal_pertama = get_next_soal()
                 if soal_pertama is not None:
                     st.session_state.current_soal = soal_pertama
@@ -158,7 +148,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
             else:
                 st.warning("Mohon isi Nama dan Kelas terlebih dahulu!")
 
-    # Jika Kuis Berlangsung
     elif st.session_state.quiz_started and st.session_state.total_soal_dikerjakan < 10:
         soal = st.session_state.current_soal
         
@@ -167,7 +156,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
             st.session_state.total_soal_dikerjakan = 10
             st.rerun()
         else:
-            # Header Informasi
             c1, c2, c3 = st.columns(3)
             c1.markdown(f"**Soal No:** {st.session_state.total_soal_dikerjakan + 1} / 10")
             c2.markdown(f"**Level Saat Ini:** {soal['Level']}")
@@ -177,22 +165,24 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
             st.markdown("---")
             st.subheader(soal["Teks_Soal"])
             
-            # Validasi & Tampilan Video Hint
             hint_video_url = str(soal.get("Hint_Video", "")).strip() if pd.notna(soal.get("Hint_Video")) else ""
             if hint_video_url.startswith("http://") or hint_video_url.startswith("https://"):
                 with st.expander("🎬 Lihat Video Petunjuk"):
                     st.video(hint_video_url)
 
-            # Ekstraksi Opsi Jawaban Pintar (Aman untuk Format Pasangan Koordinat)
+            # --- PEMISAH OPSI PINTAR ---
             raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
+            
             if ";" in raw_opsi:
                 opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
-            elif "," in raw_opsi and "(" not in raw_opsi:
+            elif "(" in raw_opsi and ")" in raw_opsi:
+                # Ekstraksi otomatis format pasangan koordinat seperti (2, 10)
+                opsi = [match.group(0).strip() for match in re.finditer(r'\([^)]+\)', raw_opsi)]
+            elif "," in raw_opsi:
                 opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
             else:
                 opsi = [raw_opsi.strip()] if raw_opsi.strip() else []
 
-            # Input Jawaban Siswa Sesuai Tipe Soal
             user_ans = ""
             tipe = str(soal["Tipe_Soal"]).upper().strip()
             
@@ -222,7 +212,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                 
             st.markdown("---")
             
-            # Tombol Submit & Next
             col_sub, col_next = st.columns([1, 1])
             
             with col_sub:
@@ -234,12 +223,17 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                             st.session_state.submitted = True
                             st.session_state.user_answer = str(user_ans).strip()
                             
-                            # Evaluasi Jawaban
                             kunci = str(soal["Kunci_Jawaban"]).strip()
                             
                             # Normalisasi pencocokan
+                            if ";" in kunci:
+                                kunci_sorted = sorted([item.strip().lower() for item in kunci.split(";") if item.strip()])
+                            elif "(" in kunci and ")" in kunci:
+                                kunci_sorted = sorted([match.group(0).strip().lower() for match in re.finditer(r'\([^)]+\)', kunci)])
+                            else:
+                                kunci_sorted = sorted([item.strip().lower() for item in kunci.split(",") if item.strip()])
+
                             user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(";") if item.strip()])
-                            kunci_sorted = sorted([item.strip().lower() for item in kunci.split(";") if item.strip()])
                             
                             if user_ans_sorted == kunci_sorted:
                                 st.session_state.is_correct = True
@@ -251,7 +245,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                                 status_txt = "SALAH"
                                 skor_val = 0
                                 
-                            # Simpan ke histori lokal
                             st.session_state.history.append({
                                 "no": st.session_state.total_soal_dikerjakan + 1,
                                 "id_soal": soal["ID_Soal"],
@@ -260,7 +253,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                                 "status": status_txt
                             })
 
-                            # Kirim Log otomatis ke Google Sheets
                             send_log_to_sheets(
                                 nama=st.session_state.nama,
                                 kelas=st.session_state.kelas,
@@ -271,14 +263,11 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                             )
                             st.rerun()
 
-            # Tampilan Hasil Evaluasi & Petunjuk Scaffolding
             if st.session_state.submitted:
                 if st.session_state.is_correct:
                     st.success("✅ **Jawaban Anda BENAR!** Kinerja yang sangat baik.")
                 else:
                     st.error("❌ **Jawaban Anda BELUM TEPAT.**")
-                    
-                    # Menampilkan Petunjuk Scaffolding
                     scaf = soal.get("Petunjuk_Scaffolding", "")
                     if pd.notna(scaf) and str(scaf).strip() != "":
                         st.info(f"💡 **Petunjuk Scaffolding (Bimbingan):**\n\n{scaf}")
@@ -288,7 +277,6 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                         next_question_action()
                         st.rerun()
 
-    # Rangkuman Setelah 10 Soal Selesai
     else:
         st.balloons()
         st.header("🏆 Kuis Selesai!")
