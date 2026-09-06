@@ -1,257 +1,254 @@
 import streamlit as st
 import pandas as pd
 import requests
-import google.generativeai as genai
+import json
+import random
 
 # ==========================================
-# 1. KONFIGURASI APLIKASI & URL UTAMA
+# KONFIGURASI DAN DATA
 # ==========================================
-st.set_page_config(
-    page_title="Aplikasi Pembelajaran Adaptif & Dashboard Guru",
-    page_icon="🎓",
-    layout="wide"
-)
+st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-# --- KONFIGURASI URL & API KEY ---
-SPREADSHEET_ID = "1ItV1GzJ_xEREEl3tiTZkA6KY0ks6yk2yBuIe3mZwqUw"
-SHEET_BANK_SOAL_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
+# Masukkan Web App URL Apps Script Anda di sini jika ada
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec" 
 
-# Masukkan URL Google Apps Script & Gemini API Key Anda
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"  # Ganti dengan Web App URL Anda
-DEFAULT_GEMINI_API_KEY = ""                                             # Ganti dengan Gemini API Key Anda jika ada
+EXCEL_URL = "https://docs.google.com/spreadsheets/d/15_mXJ8sEaR1B-_6z30Ym8h_KIn71Jp2a/export?format=xlsx" # URL Google Sheet publik Anda
 
-if DEFAULT_GEMINI_API_KEY:
-    genai.configure(api_key=DEFAULT_GEMINI_API_KEY)
-
-# ==========================================
-# 2. HELPER FETCH DATA (AUTO CLEAR CACHE 5 DETIK)
-# ==========================================
-@st.cache_data(ttl=5)
-def fetch_bank_soal():
+@st.cache_data(ttl=60)
+def load_bank_soal():
     try:
-        df = pd.read_csv(SHEET_BANK_SOAL_URL)
-        df.columns = df.columns.str.strip() # Hapus spasi liar pada header
-        
-        # Penanganan fleksibel untuk penamaan kolom Tipe Soal
-        tipe_col = None
-        for col in df.columns:
-            if col.lower().replace(" ", "_") in ["tipe_soal", "tipe", "tipesoal"]:
-                tipe_col = col
-                break
-                
-        if tipe_col:
-            df['Tipe_Soal_Clean'] = df[tipe_col].fillna('ISIAN').astype(str).str.upper().str.strip()
-        else:
-            df['Tipe_Soal_Clean'] = 'ISIAN'
-
-        # Penanganan fleksibel untuk Opsi Jawaban
-        opsi_col = None
-        for col in df.columns:
-            if col.lower().replace(" ", "_") in ["opsi_jawaban", "opsi", "opsijawaban", "pilihan"]:
-                opsi_col = col
-                break
-
-        if opsi_col:
-            df['Opsi_Jawaban_Clean'] = df[opsi_col].fillna('-')
-        else:
-            df['Opsi_Jawaban_Clean'] = '-'
-            
+        df = pd.read_excel(EXCEL_URL, sheet_name="Bank_Soal")
         return df
     except Exception as e:
-        st.error(f"Gagal mengambil data Bank Soal: {e}")
+        st.error(f"Gagal memuat bank soal: {e}")
         return pd.DataFrame()
 
-# Helper untuk Mengirim Data Hasil Kerja Siswa ke Google Sheets via Web App
-def kirim_nilai_ke_sheet(nama, kelas, id_soal, jawaban_user, status_jawaban, skor):
-    if not WEB_APP_URL or "YOUR_SCRIPT_ID" in WEB_APP_URL:
-        return False
-    try:
-        payload = {
-            "nama": nama,
-            "kelas": kelas,
-            "id_soal": id_soal,
-            "jawaban": jawaban_user,
-            "status": status_jawaban,
-            "skor": skor
-        }
-        response = requests.post(WEB_APP_URL, json=payload, timeout=5)
-        return response.status_code == 200
-    except Exception:
-        return False
+df_soal = load_bank_soal()
 
 # ==========================================
-# 3. INITIALIZE SESSION STATE & SIDEBAR NAVIGASI
+# INISIALISASI SESSION STATE
 # ==========================================
-bank_soal = fetch_bank_soal()
+if "nama" not in st.session_state:
+    st.session_state.nama = ""
+if "kelas" not in st.session_state:
+    st.session_state.kelas = ""
+if "quiz_started" not in st.session_state:
+    st.session_state.quiz_started = False
+if "current_level" not in st.session_state:
+    st.session_state.current_level = 1
+if "total_soal_dikerjakan" not in st.session_state:
+    st.session_state.total_soal_dikerjakan = 0
+if "correct_per_level" not in st.session_state:
+    st.session_state.correct_per_level = {1: 0, 2: 0, 3: 0, 4: 0}
+if "used_soal_ids" not in st.session_state:
+    st.session_state.used_soal_ids = []
+if "current_soal" not in st.session_state:
+    st.session_state.current_soal = None
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+if "is_correct" not in st.session_state:
+    st.session_state.is_correct = False
+if "user_answer" not in st.session_state:
+    st.session_state.user_answer = ""
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-if 'index_soal' not in st.session_state:
-    st.session_state.index_soal = 0
-if 'nama_siswa' not in st.session_state:
-    st.session_state.nama_siswa = ""
-if 'kelas_siswa' not in st.session_state:
-    st.session_state.kelas_siswa = ""
+# ==========================================
+# FUNGSI NAVIGASI SOAL ADAPTIF
+# ==========================================
+def get_next_soal():
+    if df_soal.empty:
+        return None
+    
+    # Cek level: Jika level aktif sudah memiliki 2 jawaban benar, naik level
+    lvl = st.session_state.current_level
+    while st.session_state.correct_per_level.get(lvl, 0) >= 2 and lvl < 4:
+        lvl += 1
+        st.session_state.current_level = lvl
+        
+    # Filter soal di level aktif yang belum pernah dikerjakan
+    available_soal = df_soal[
+        (df_soal["Level"] == st.session_state.current_level) & 
+        (~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids))
+    ]
+    
+    # Jika soal di level aktif habis, ambil dari level acak yang tersedia
+    if available_soal.empty:
+        available_soal = df_soal[~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids)]
+        
+    if available_soal.empty:
+        return None
+        
+    # Acak tipe soal dan pilih 1 secara random
+    selected = available_soal.sample(n=1).iloc[0]
+    return selected
 
+def next_question_action():
+    st.session_state.total_soal_dikerjakan += 1
+    st.session_state.submitted = False
+    st.session_state.user_answer = ""
+    st.session_state.is_correct = False
+    
+    if st.session_state.total_soal_dikerjakan < 10:
+        st.session_state.current_soal = get_next_soal()
+        if st.session_state.current_soal is not None:
+            st.session_state.used_soal_ids.append(st.session_state.current_soal["ID_Soal"])
+
+# ==========================================
+# TAMPILAN SIDEBAR
+# ==========================================
 with st.sidebar:
     st.title("📌 Navigasi Utama")
-    role = st.radio("Pilih Peran Halaman:", ["👨‍🎓 Halaman Siswa (Kuis)", "👨‍🏫 Dashboard Guru (Penilaian)"])
-    st.divider()
-    
-    st.subheader("⚙️ Pengaturan Cache")
+    role = st.radio("Pilih Peran Halaman:", ["🧑‍🎓 Halaman Siswa (Kuis)", "👨‍🏫 Dashboard Guru (Penilaian)"])
+    st.markdown("---")
     if st.button("🗑️ Clear Cache Manual"):
         st.cache_data.clear()
         st.success("Cache berhasil dibersihkan!")
-        st.rerun()
 
 # ==========================================
-# 4. HALAMAN SISWA (KUIS & LATIHAN)
+# HALAMAN SISWA
 # ==========================================
-if role == "👨‍🎓 Halaman Siswa (Kuis)":
-    st.title("📝 Lembar Kerja Siswa")
+if role == "🧑‍🎓 Halaman Siswa (Kuis)":
+    st.title("📝 Lembar Kerja Siswa (Kuis Adaptif)")
     
-    # Form Identitas Siswa
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.session_state.nama_siswa = st.text_input("Masukkan Nama Lengkap:", value=st.session_state.nama_siswa)
-    with col_b:
-        st.session_state.kelas_siswa = st.text_input("Masukkan Kelas:", value=st.session_state.kelas_siswa)
-        
-    st.divider()
-
-    if bank_soal.empty:
-        st.warning("Data soal tidak ditemukan atau gagal dimuat.")
-        st.stop()
-
-    soal = bank_soal.iloc[st.session_state.index_soal]
-    id_soal = soal.get('ID_Soal', st.session_state.index_soal + 1)
-    tipe_soal = str(soal['Tipe_Soal_Clean'])
-    
-    st.subheader(f"Soal No. {st.session_state.index_soal + 1} dari {len(bank_soal)}")
-    st.caption(f"ID Soal: **{id_soal}** | Level: **{soal.get('Level', '-')}** | Tipe Soal: **{tipe_soal}**")
-    
-    # Display Teks Soal
-    st.markdown(f"### {soal.get('Teks_Soal', '')}")
-    
-    # Display Hint Video jika ada
-    hint_video = soal.get('Hint_Video', '-')
-    if pd.notna(hint_video) and str(hint_video).startswith('http'):
-        with st.expander("🎬 Lihat Video Petunjuk"):
-            st.video(str(hint_video))
+    # Form Identitas
+    if not st.session_state.quiz_started:
+        st.info("Silakan isi nama dan kelas terlebih dahulu untuk memulai kuis (Maksimal 10 Soal).")
+        col1, col2 = st.columns(2)
+        with col1:
+            nama_in = st.text_input("Masukkan Nama Lengkap:")
+        with col2:
+            kelas_in = st.text_input("Masukkan Kelas:")
             
-    jawaban_user = None
-
-    # --- RENDERING UI BERDASARKAN TIPE SOAL ---
-    if tipe_soal == 'PG':
-        opsi = [o.strip() for o in str(soal['Opsi_Jawaban_Clean']).split(',')]
-        jawaban_user = st.radio("Pilih salah satu jawaban:", options=opsi, key=f"pg_{id_soal}")
-
-    elif tipe_soal == 'PGK':
-        opsi = [o.strip() for o in str(soal['Opsi_Jawaban_Clean']).split(',')]
-        st.write("📌 *Pilih semua jawaban yang menurut Anda benar:*")
-        pilihan = []
-        for idx, o in enumerate(opsi):
-            if st.checkbox(o, key=f"pgk_{id_soal}_{idx}"):
-                pilihan.append(o)
-        jawaban_user = ", ".join(pilihan) if pilihan else None
-
-    elif tipe_soal == 'MENJODOHKAN':
-        opsi = [o.strip() for o in str(soal['Opsi_Jawaban_Clean']).split(',')]
-        jawaban_user = st.selectbox("Pilih pasangan jawaban yang tepat:", options=["-- Pilih Pasangan --"] + opsi, key=f"jodoh_{id_soal}")
-        if jawaban_user == "-- Pilih Pasangan --":
-            jawaban_user = None
-
-    elif tipe_soal == 'BS':
-        jawaban_user = st.radio("Tentukan kebenaran pernyataan:", options=["BENAR", "SALAH"], key=f"bs_{id_soal}")
-
-    else: # ISIAN / DEFAULT
-        jawaban_user = st.text_input("Ketikkan jawaban Anda:", key=f"isian_{id_soal}")
-
-    # --- SUBMIT & SKORING ---
-    st.divider()
-    c1, c2 = st.columns([1, 1])
-
-    with c1:
-        if st.button("Submit Jawaban", type="primary"):
-            if not st.session_state.nama_siswa:
-                st.warning("⚠️ Harap isi Nama Anda di bagian atas sebelum menjawab!")
-            elif not jawaban_user:
-                st.warning("⚠️ Harap isi/pilih jawaban Anda terlebih dahulu!")
-            else:
-                kunci = str(soal.get('Kunci_Jawaban', '')).strip()
-                ans_str = str(jawaban_user).strip()
+        if st.button("🚀 Mulai Kuis"):
+            if nama_in.strip() != "" and kelas_in.strip() != "":
+                st.session_state.nama = nama_in
+                st.session_state.kelas = kelas_in
+                st.session_state.quiz_started = True
+                st.session_state.total_soal_dikerjakan = 0
+                st.session_state.current_level = 1
+                st.session_state.correct_per_level = {1: 0, 2: 0, 3: 0, 4: 0}
+                st.session_state.used_soal_ids = []
+                st.session_state.history = []
                 
-                is_correct = (ans_str.lower() == kunci.lower())
-                skor = 100 if is_correct else 0
-                status = "BENAR" if is_correct else "SALAH"
-
-                # Kirim ke Web App
-                terkirim = kirim_nilai_ke_sheet(
-                    st.session_state.nama_siswa,
-                    st.session_state.kelas_siswa,
-                    id_soal,
-                    ans_str,
-                    status,
-                    skor
-                )
-                
-                if is_correct:
-                    st.success("🎉 Jawaban Anda BENAR!")
-                else:
-                    st.error("❌ Jawaban Anda belum tepat.")
-                    petunjuk = soal.get('Petunjuk_Scaffolding_AI', '-')
-                    if pd.notna(petunjuk) and petunjuk != '-':
-                        st.info(f"💡 **Petunjuk:** {petunjuk}")
-
-                    if DEFAULT_GEMINI_API_KEY:
-                        with st.spinner("🤖 AI Tutor sedang menyiapkan saran belajar..."):
-                            try:
-                                model = genai.GenerativeModel('gemini-1.5-flash')
-                                prompt = f"Siswa salah menjawab soal matematika: '{soal.get('Teks_Soal','')}'. Jawaban siswa: '{ans_str}'. Berikan bimbingan ringkas (scaffolding) tanpa membocorkan kunci jawaban secara langsung."
-                                res = model.generate_content(prompt)
-                                st.markdown(f"**🤖 Bimbingan AI:**\n{res.text}")
-                            except Exception as e:
-                                pass
-
-    with c2:
-        if st.button("Soal Selanjutnya ➡️"):
-            if st.session_state.index_soal < len(bank_soal) - 1:
-                st.session_state.index_soal += 1
+                # Pilih soal pertama
+                soal_pertama = get_next_soal()
+                if soal_pertama is not None:
+                    st.session_state.current_soal = soal_pertama
+                    st.session_state.used_soal_ids.append(soal_pertama["ID_Soal"])
                 st.rerun()
             else:
-                st.balloons()
-                st.success("Selesai! Anda telah mengerjakan seluruh soal.")
+                st.warning("Mohon isi Nama dan Kelas terlebih dahulu!")
+
+    # Jika Kuis Berlangsung
+    elif st.session_state.quiz_started and st.session_state.total_soal_dikerjakan < 10:
+        soal = st.session_state.current_soal
+        
+        if soal is None:
+            st.success("🎉 Soal dalam bank soal telah habis!")
+            st.session_state.total_soal_dikerjakan = 10
+            st.rerun()
+        else:
+            # Header Informasi
+            c1, c2, c3 = st.columns(3)
+            c1.markdown(f"**Soal No:** {st.session_state.total_soal_dikerjakan + 1} / 10")
+            c2.markdown(f"**Level Saat Ini:** {soal['Level']}")
+            c3.markdown(f"**Tipe Soal:** {soal['Tipe_Soal']}")
+            st.progress((st.session_state.total_soal_dikerjakan) / 10)
+            
+            st.markdown("---")
+            st.subheader(soal["Teks_Soal"])
+            
+            # Hint Video
+            if pd.notna(soal.get("Hint_Video")) and str(soal.get("Hint_Video")).strip() != "":
+                with st.expander("🎬 Lihat Video Petunjuk"):
+                    st.video(str(soal["Hint_Video"]))
+
+            # Input Jawaban Siswa
+            user_ans = ""
+            tipe = str(soal["Tipe_Soal"]).upper()
+            
+            if tipe == "ISIAN":
+                user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_isian")
+            elif tipe in ["PG", "PILIHAN GANDA"]:
+                opsi = str(soal["Opsi_Jawaban"]).split(";") if pd.notna(soal.get("Opsi_Jawaban")) else []
+                user_ans = st.radio("Pilih jawaban:", opsi, disabled=st.session_state.submitted, key="input_pg")
+            else:
+                user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_def")
+                
+            st.markdown("---")
+            
+            # Tombol Submit & Next
+            col_sub, col_next = st.columns([1, 1])
+            
+            with col_sub:
+                if not st.session_state.submitted:
+                    if st.button(" Submit Jawaban", type="primary"):
+                        if str(user_ans).strip() == "":
+                            st.warning("Isi jawaban terlebih dahulu!")
+                        else:
+                            st.session_state.submitted = True
+                            st.session_state.user_answer = str(user_ans).strip()
+                            
+                            # Evaluasi Jawaban
+                            kunci = str(soal["Kunci_Jawaban"]).strip()
+                            if st.session_state.user_answer.lower() == kunci.lower():
+                                st.session_state.is_correct = True
+                                st.session_state.correct_per_level[soal["Level"]] += 1
+                            else:
+                                st.session_state.is_correct = False
+                                
+                            # Simpan ke histori
+                            st.session_state.history.append({
+                                "no": st.session_state.total_soal_dikerjakan + 1,
+                                "id_soal": soal["ID_Soal"],
+                                "level": soal["Level"],
+                                "jawaban": st.session_state.user_answer,
+                                "status": "BENAR" if st.session_state.is_correct else "SALAH"
+                            })
+                            st.rerun()
+
+            # Tampilan Hasil Evaluasi & Petunjuk Scaffolding
+            if st.session_state.submitted:
+                if st.session_state.is_correct:
+                    st.success("✅ **Jawaban Anda BENAR!** Kinerja yang sangat baik.")
+                else:
+                    st.error("❌ **Jawaban Anda BELUM TEPAT.**")
+                    
+                    # Menampilkan Petunjuk Scaffolding
+                    scaf = soal.get("Petunjuk_Scaffolding", "")
+                    if pd.notna(scaf) and str(scaf).strip() != "":
+                        st.info(f"💡 **Petunjuk Scaffolding (Bimbingan):**\n\n{scaf}")
+                
+                with col_next:
+                    if st.button("Soal Selanjutnya ➡️"):
+                        next_question_action()
+                        st.rerun()
+
+    # Rangkuman Setelah 10 Soal Selesai
+    else:
+        st.balloons()
+        st.header("🏆 Kuis Selesai!")
+        st.write(f"Terima kasih **{st.session_state.nama}** (Kelas {st.session_state.kelas}). Anda telah menyelesaikan 10 soal.")
+        
+        total_benar = sum([1 for h in st.session_state.history if h["status"] == "BENAR"])
+        st.metric("Total Skor (Benar)", f"{total_benar * 10} / 100")
+        st.metric("Level Terakhir Dicapai", f"Level {st.session_state.current_level}")
+        
+        st.subheader("📋 Ringkasan Hasil Pengerjaan:")
+        df_hist = pd.DataFrame(st.session_state.history)
+        st.dataframe(df_hist, use_container_width=True)
+        
+        if st.button("🔄 Ulangi Kuis"):
+            st.session_state.quiz_started = False
+            st.rerun()
 
 # ==========================================
-# 5. HALAMAN DASHBOARD GURU (PENILAIAN)
+# HALAMAN GURU
 # ==========================================
 else:
-    st.title("👨‍🏫 Dashboard Penilaian Guru")
-    st.caption("Pantau kemajuan pengerjaan siswa dan rekapitulasi skor secara real-time.")
-    
-    st.info(f"Status Koneksi Web App Apps Script: **{'Terhubung' if WEB_APP_URL and 'YOUR_SCRIPT_ID' not in WEB_APP_URL else 'Belum Dikonfigurasi'}**")
-
-    # Ambil Rekap Data Siswa via Web App Apps Script (Jika Tersedia)
-    if st.button("🔄 Refresh Data Hasil Siswa"):
-        st.rerun()
-
-    if WEB_APP_URL and "YOUR_SCRIPT_ID" not in WEB_APP_URL:
-        try:
-            res = requests.get(WEB_APP_URL, timeout=5)
-            if res.status_code == 200:
-                data_siswa = res.json()
-                df_rekap = pd.DataFrame(data_siswa)
-                
-                st.subheader("📊 Tabel Rekapitulasi Nilai Siswa")
-                st.dataframe(df_rekap, use_container_width=True)
-                
-                # Ringkasan Statistik
-                if not df_rekap.empty and 'skor' in df_rekap.columns:
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Total Jawaban Masuk", len(df_rekap))
-                    m2.metric("Rata-Rata Skor", f"{df_rekap['skor'].astype(float).mean():.1f}")
-                    m3.metric("Siswa Unik", df_rekap['nama'].nunique() if 'nama' in df_rekap.columns else 0)
-            else:
-                st.warning("Gagal mengambil data dari Google Apps Script.")
-        except Exception as e:
-            st.error(f"Error memuat data penilaian: {e}")
-    else:
-        st.warning("Silakan masukkan URL Google Apps Script (`WEB_APP_URL`) Anda pada bagian atas kode untuk menampilkan hasil kerja siswa secara otomatis.")
+    st.title("👨‍🏫 Dashboard Guru & Rekapitulasi")
+    st.write("Pantau hasil capaian kuis siswa secara real-time.")
+    if not df_soal.empty:
+        st.subheader("📊 Data Bank Soal Aktif")
+        st.dataframe(df_soal[["ID_Soal", "Level", "Subtopik", "Tipe_Soal", "Teks_Soal", "Petunjuk_Scaffolding"]], use_container_width=True)
