@@ -9,16 +9,16 @@ import random
 # ==========================================
 st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-# Web App URL Google Apps Script Anda untuk menyimpan data ke Log_Ujian
+# Web App URL Google Apps Script Anda untuk menyimpan log jawaban ke Log_Ujian
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
 
-# URL Google Sheet publik untuk membaca bank soal
+# URL Publikasi CSV Google Sheets Bank Soal Anda
 EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxH0HVZkDQamsnLf9XJeARLNHqxtlNDKBSu65Yor3D0-ll0RE9GsWEjQkYRpXAZDALFtqFgrCzzMIb/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=60)
 def load_bank_soal():
     try:
-        df = pd.read_excel(EXCEL_URL, sheet_name="Bank_Soal")
+        df = pd.read_csv(EXCEL_URL)
         return df
     except Exception as e:
         st.error(f"Gagal memuat bank soal: {e}")
@@ -90,14 +90,14 @@ def get_next_soal():
         (~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids))
     ]
     
-    # Jika soal di level aktif habis, ambil dari level lain yang tersedia
+    # Jika soal di level aktif habis, ambil dari level acak lain yang belum dikerjakan
     if available_soal.empty:
         available_soal = df_soal[~df_soal["ID_Soal"].isin(st.session_state.used_soal_ids)]
         
     if available_soal.empty:
         return None
         
-    # Acak tipe soal dan pilih 1 secara random
+    # Acak dan pilih 1 soal secara random
     selected = available_soal.sample(n=1).iloc[0]
     return selected
 
@@ -129,7 +129,7 @@ with st.sidebar:
 if role == "🧑‍🎓 Halaman Siswa (Kuis)":
     st.title("📝 Lembar Kerja Siswa (Kuis Adaptif)")
     
-    # Form Identitas
+    # Form Identitas Siswa
     if not st.session_state.quiz_started:
         st.info("Silakan isi nama dan kelas terlebih dahulu untuk memulai kuis (Maksimal 10 Soal).")
         col1, col2 = st.columns(2)
