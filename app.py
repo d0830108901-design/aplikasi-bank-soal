@@ -183,12 +183,14 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                 with st.expander("🎬 Lihat Video Petunjuk"):
                     st.video(hint_video_url)
 
-            # Ekstraksi Opsi Jawaban
+            # Ekstraksi Opsi Jawaban Pintar (Aman untuk Format Pasangan Koordinat)
             raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
             if ";" in raw_opsi:
                 opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
-            else:
+            elif "," in raw_opsi and "(" not in raw_opsi:
                 opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
+            else:
+                opsi = [raw_opsi.strip()] if raw_opsi.strip() else []
 
             # Input Jawaban Siswa Sesuai Tipe Soal
             user_ans = ""
@@ -201,7 +203,7 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                     checked = st.checkbox(opt, disabled=st.session_state.submitted, key=f"pgk_{idx}")
                     if checked:
                         selected_opts.append(opt)
-                user_ans = ", ".join(selected_opts)
+                user_ans = "; ".join(selected_opts)
                 
             elif tipe in ["MENJODOHKAN", "MATCHING"]:
                 st.write("Pilih Pasangan/Jawaban yang tepat:")
@@ -236,8 +238,8 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                             kunci = str(soal["Kunci_Jawaban"]).strip()
                             
                             # Normalisasi pencocokan
-                            user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(",") if item.strip()])
-                            kunci_sorted = sorted([item.strip().lower() for item in kunci.replace(";", ",").split(",") if item.strip()])
+                            user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(";") if item.strip()])
+                            kunci_sorted = sorted([item.strip().lower() for item in kunci.split(";") if item.strip()])
                             
                             if user_ans_sorted == kunci_sorted:
                                 st.session_state.is_correct = True
