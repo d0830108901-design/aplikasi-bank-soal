@@ -28,7 +28,7 @@ df_soal = load_bank_soal()
 
 # Fungsi untuk Mengirim Data Hasil Soal ke Google Sheets via Apps Script
 def send_log_to_sheets(nama, kelas, id_soal, jawaban, status, skor):
-    if WEB_APP_URL.strip() == "":
+    if not WEB_APP_URL.strip():
         return
     payload = {
         "nama": nama,
@@ -177,10 +177,11 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
             st.markdown("---")
             st.subheader(soal["Teks_Soal"])
             
-            # Hint Video
-            if pd.notna(soal.get("Hint_Video")) and str(soal.get("Hint_Video")).strip() != "":
+            # Validasi & Tampilan Video Hint
+            hint_video_url = str(soal.get("Hint_Video", "")).strip() if pd.notna(soal.get("Hint_Video")) else ""
+            if hint_video_url.startswith("http://") or hint_video_url.startswith("https://"):
                 with st.expander("🎬 Lihat Video Petunjuk"):
-                    st.video(str(soal["Hint_Video"]))
+                    st.video(hint_video_url)
 
             # Input Jawaban Siswa
             user_ans = ""
