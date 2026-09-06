@@ -21,7 +21,7 @@ except ImportError:
 # ==========================================
 st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzsDuCf2XmyxNsg3lflVUMig_7OBdeJtXXRKUiLxRb6toL11cRyb4IwWnhosE5NrE8C/exec"
 EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxH0HVZkDQamsnLf9XJeARLNHqxtlNDKBSu65Yor3D0-ll0RE9GsWEjQkYRpXAZDALFtqFgrCzzMIb/pub?gid=0&single=true&output=csv"
 
 @st.cache_data(ttl=30)
