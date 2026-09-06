@@ -203,6 +203,15 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                         selected_opts.append(opt)
                 user_ans = ", ".join(selected_opts)
                 
+            elif tipe in ["MENJODOHKAN", "MATCHING"]:
+                st.write("Pilih Pasangan/Jawaban yang tepat:")
+                if opsi:
+                    user_ans = st.selectbox("Pasangan Jawaban:", ["-- Pilih Jawaban --"] + opsi, disabled=st.session_state.submitted, key="input_menjodohkan")
+                    if user_ans == "-- Pilih Jawaban --":
+                        user_ans = ""
+                else:
+                    user_ans = st.text_input("Ketikkan jawaban pasangan Anda:", disabled=st.session_state.submitted, key="input_menjodohkan_txt")
+                
             elif tipe in ["PG", "PILIHAN GANDA", "BS", "BENAR SALAH"]:
                 user_ans = st.radio("Pilih jawaban:", opsi, disabled=st.session_state.submitted, key="input_pg")
                 
@@ -226,7 +235,7 @@ if role == "🧑‍🎓 Halaman Siswa (Kuis)":
                             # Evaluasi Jawaban
                             kunci = str(soal["Kunci_Jawaban"]).strip()
                             
-                            # Normalisasi pencocokan PGK / Text
+                            # Normalisasi pencocokan
                             user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(",") if item.strip()])
                             kunci_sorted = sorted([item.strip().lower() for item in kunci.replace(";", ",").split(",") if item.strip()])
                             
