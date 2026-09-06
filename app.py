@@ -17,7 +17,7 @@ SPREADSHEET_ID = "1ItV1GzJ_xEREEl3tiTZkA6KY0ks6yk2yBuIe3mZwqUw"
 SHEET_BANK_SOAL_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
 
 # Masukkan URL Google Apps Script & Gemini API Key Anda
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyPn_nBTbIPDAkRPCD9_HYoVe8Mq5IqbKbYSS_jnSpEs91De2Ny11C1rHk5uJy6dsTw/exec"  # Ganti dengan Web App URL Anda
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"  # Ganti dengan Web App URL Anda
 DEFAULT_GEMINI_API_KEY = ""                                             # Ganti dengan Gemini API Key Anda jika ada
 
 if DEFAULT_GEMINI_API_KEY:
