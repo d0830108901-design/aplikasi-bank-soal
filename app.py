@@ -6,7 +6,7 @@ import re
 import time
 from io import BytesIO
 
-# Try importing ReportLab for PDF generation
+# Library untuk Export PDF
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -21,9 +21,8 @@ except ImportError:
 # ==========================================
 st.set_page_config(page_title="Kuis Adaptif Matematika", layout="wide")
 
-# URL Web App Google Apps Script Terbaru & Bank Soal
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzsDuCf2XmyxNsg3lflVUMig_7OBdeJtXXRKUiLxRb6toL11cRyb4IwWnhosE5NrE8C/exec"
-EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQxH0HVZkDQamsnLf9XJeARLNHqxtlNDKBSu65Yor3D0-ll0RE9GsWEjQkYRpXAZDALFtqFgrCzzMIb/pub?gid=0&single=true&output=csv"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw8UBXnO11hg8SBFjRAeTSUpENyg8Hjwi0jqQOfQ_sqNMh6JZ0LEvVPIn0tza1iy017/exec"
+EXCEL_URL = "https://script.google.com/macros/s/AKfycbzsDuCf2XmyxNsg3lflVUMig_7OBdeJtXXRKUiLxRb6toL11cRyb4IwWnhosE5NrE8C/exec"
 
 @st.cache_data(ttl=30)
 def load_bank_soal():
@@ -35,14 +34,15 @@ def load_bank_soal():
         return pd.DataFrame()
 
 def load_log_ujian_remote():
+    """Membaca log pengerjaan siswa langsung dari Google Apps Script"""
     if not WEB_APP_URL.strip():
         return pd.DataFrame()
     try:
-        res = requests.get(WEB_APP_URL + "?action=read_log", timeout=8)
+        res = requests.get(WEB_APP_URL + "?action=read_log", timeout=5)
         if res.status_code == 200:
             data = res.json()
             return pd.DataFrame(data)
-    except Exception as e:
+    except:
         pass
     return pd.DataFrame()
 
@@ -68,7 +68,7 @@ def send_log_to_sheets(nama, kelas, sekolah, id_soal, no_soal, jawaban, status, 
         st.warning(f"Gagal menyinkronkan log ke Google Sheets: {e}")
 
 # ==========================================
-# FUNGSI GENERATE PDF (REPORTLAB)
+# FUNGSI GENERATE PDF
 # ==========================================
 def generate_pdf_rapor(nama, kelas, sekolah, total_skor, total_soal, level_tertinggi, avg_time, narasi, saran, df_hist):
     buffer = BytesIO()
@@ -206,7 +206,7 @@ def next_question_action():
             st.session_state.soal_start_time = time.time()
 
 # ==========================================
-# LANDING PAGE (PILIHAN PERAN)
+# TAMPILAN AWAL (SELEKSI PERAN / LANDING PAGE)
 # ==========================================
 if st.session_state.user_role is None:
     st.title("🎓 Portal Kuis Adaptif Matematika")
@@ -229,6 +229,7 @@ if st.session_state.user_role is None:
             st.rerun()
 
 else:
+    # Navigation Bar Atas
     top_col1, top_col2 = st.columns([4, 1])
     with top_col1:
         st.caption(f"Peran Aktif: **{st.session_state.user_role}**")
@@ -245,8 +246,9 @@ else:
     if st.session_state.user_role == "Siswa":
         st.title("📝 Lembar Kerja Siswa (Kuis Adaptif)")
         
+        # Form Identitas Siswa Lengkap
         if not st.session_state.quiz_started:
-            st.info("Silakan lengkapi identitas Anda sebelum memulai kuis (Waktu Maksimal: 60 Menit / 10 Soal).")
+            st.info("Silakan lengkapi identitas Anda di bawah ini sebelum memulai kuis (Durasi: 60 Menit / Maksimal 10 Soal).")
             col1, col2, col3 = st.columns(3)
             with col1:
                 nama_in = st.text_input("Nama Lengkap:")
@@ -275,15 +277,17 @@ else:
                         st.session_state.soal_start_time = time.time()
                     st.rerun()
                 else:
-                    st.warning("Mohon lengkapi Nama, Kelas, dan Asal Sekolah terlebih dahulu!")
+                    st.warning("Mohon lengkapi seluruh data identitas (Nama, Kelas, dan Asal Sekolah)!")
 
+        # Kuis Berlangsung
         elif st.session_state.quiz_started:
             elapsed_total = time.time() - st.session_state.start_time
             remaining_total = max(0, 3600 - int(elapsed_total))
             
+            # Penghentian Otomatis
             if remaining_total <= 0 or st.session_state.total_soal_dikerjakan >= 10:
                 if remaining_total <= 0:
-                    st.error("⏰ Waktu 60 menit telah habis! Kuis dihentikan secara otomatis.")
+                    st.error("⏰ Waktu 60 menit telah habis! Kuis dihentikan.")
                 
                 st.balloons()
                 st.header("📜 Rapor Hasil & Analysis Pencapaian Siswa")
@@ -322,171 +326,156 @@ else:
                 if not df_hist.empty:
                     st.dataframe(df_hist, use_container_width=True)
                 
-                col_p1, col_p2 = st.columns(2)
-                with col_p1:
-                    if PDF_AVAILABLE:
-                        pdf_bytes = generate_pdf_rapor(
-                            st.session_state.nama, st.session_state.kelas, st.session_state.sekolah,
-                            total_skor, total_soal, st.session_state.current_level, avg_time,
-                            narasi, saran, df_hist
-                        )
-                        st.download_button(
-                            label="📥 Download Rapor (PDF ReportLab)",
-                            data=pdf_bytes,
-                            file_name=f"Rapor_{st.session_state.nama.replace(' ', '_')}.pdf",
-                            mime="application/pdf",
-                            type="primary"
-                        )
-                
-                with col_p2:
-                    # Tombol Cetak Browser Instan (Solusi 2)
-                    st.markdown("""
-                        <button onclick="window.print()" style="
-                            background-color: #ff4b4b; 
-                            color: white; 
-                            padding: 8px 16px; 
-                            border: none; 
-                            border-radius: 6px; 
-                            cursor: pointer;
-                            font-weight: bold;">
-                            🖨️ Cetak / Simpan Halaman ke PDF
-                        </button>
-                    """, unsafe_allow_html=True)
+                # Opsi Export ke PDF
+                if PDF_AVAILABLE:
+                    pdf_bytes = generate_pdf_rapor(
+                        st.session_state.nama, st.session_state.kelas, st.session_state.sekolah,
+                        total_skor, total_soal, st.session_state.current_level, avg_time,
+                        narasi, saran, df_hist
+                    )
+                    st.download_button(
+                        label="📄 Download Rapor Hasil (PDF)",
+                        data=pdf_bytes,
+                        file_name=f"Rapor_{st.session_state.nama.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+                else:
+                    st.warning("Library ReportLab belum terinstall untuk export PDF. Silakan install `reportlab`.")
 
-                st.markdown("---")
                 if st.button("🔄 Ulangi Kuis"):
                     st.session_state.quiz_started = False
                     st.rerun()
 
-        else:
-            soal = st.session_state.current_soal
-            menit = remaining_total // 60
-            detik = remaining_total % 60
-            
-            c1, c2, c3 = st.columns(3)
-            c1.markdown(f"**Soal No:** {st.session_state.total_soal_dikerjakan + 1} / 10")
-            c2.markdown(f"**Level Saat Ini:** {soal['Level']}")
-            c3.markdown(f"⏱️ **Sisa Waktu:** {menit:02d}:{detik:02d}")
-            st.progress((st.session_state.total_soal_dikerjakan) / 10)
-            
-            st.markdown("---")
-            st.subheader(soal["Teks_Soal"])
-            
-            hint_video_url = str(soal.get("Hint_Video", "")).strip() if pd.notna(soal.get("Hint_Video")) else ""
-            if hint_video_url.startswith("http://") or hint_video_url.startswith("https://"):
-                with st.expander("🎬 Lihat Video Petunjuk"):
-                    st.video(hint_video_url)
-
-            raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
-            if ";" in raw_opsi:
-                opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
-            elif "(" in raw_opsi and ")" in raw_opsi:
-                opsi = [match.group(0).strip() for match in re.finditer(r'\([^)]+\)', raw_opsi)]
-            elif "," in raw_opsi:
-                opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
             else:
-                opsi = [raw_opsi.strip()] if raw_opsi.strip() else []
-
-            user_ans = ""
-            tipe = str(soal["Tipe_Soal"]).upper().strip()
-            
-            if tipe in ["PGK", "PILIHAN GANDA KOMPLEKS"]:
-                st.write("Pilihlah semua jawaban yang menurut Anda benar:")
-                selected_opts = []
-                for idx, opt in enumerate(opsi):
-                    checked = st.checkbox(opt, disabled=st.session_state.submitted, key=f"pgk_{idx}")
-                    if checked:
-                        selected_opts.append(opt)
-                user_ans = "; ".join(selected_opts)
+                soal = st.session_state.current_soal
+                menit = remaining_total // 60
+                detik = remaining_total % 60
                 
-            elif tipe in ["MENJODOHKAN", "MATCHING"]:
-                st.write("Pilih Pasangan/Jawaban yang tepat:")
-                if opsi:
-                    user_ans = st.selectbox("Pasangan Jawaban:", ["-- Pilih Jawaban --"] + opsi, disabled=st.session_state.submitted, key="input_menjodohkan")
-                    if user_ans == "-- Pilih Jawaban --":
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(f"**Soal No:** {st.session_state.total_soal_dikerjakan + 1} / 10")
+                c2.markdown(f"**Level Saat Ini:** {soal['Level']}")
+                c3.markdown(f"⏱️ **Sisa Waktu:** {menit:02d}:{detik:02d}")
+                st.progress((st.session_state.total_soal_dikerjakan) / 10)
+                
+                st.markdown("---")
+                st.subheader(soal["Teks_Soal"])
+                
+                hint_video_url = str(soal.get("Hint_Video", "")).strip() if pd.notna(soal.get("Hint_Video")) else ""
+                if hint_video_url.startswith("http://") or hint_video_url.startswith("https://"):
+                    with st.expander("🎬 Lihat Video Petunjuk"):
+                        st.video(hint_video_url)
+
+                raw_opsi = str(soal.get("Opsi_Jawaban", "")) if pd.notna(soal.get("Opsi_Jawaban")) else ""
+                if ";" in raw_opsi:
+                    opsi = [o.strip() for o in raw_opsi.split(";") if o.strip()]
+                elif "(" in raw_opsi and ")" in raw_opsi:
+                    opsi = [match.group(0).strip() for match in re.finditer(r'\([^)]+\)', raw_opsi)]
+                elif "," in raw_opsi:
+                    opsi = [o.strip() for o in raw_opsi.split(",") if o.strip()]
+                else:
+                    opsi = [raw_opsi.strip()] if raw_opsi.strip() else []
+
+                user_ans = ""
+                tipe = str(soal["Tipe_Soal"]).upper().strip()
+                
+                if tipe in ["PGK", "PILIHAN GANDA KOMPLEKS"]:
+                    st.write("Pilihlah semua jawaban yang menurut Anda benar:")
+                    selected_opts = []
+                    for idx, opt in enumerate(opsi):
+                        checked = st.checkbox(opt, disabled=st.session_state.submitted, key=f"pgk_{idx}")
+                        if checked:
+                            selected_opts.append(opt)
+                    user_ans = "; ".join(selected_opts)
+                    
+                elif tipe in ["MENJODOHKAN", "MATCHING"]:
+                    st.write("Pilih Pasangan/Jawaban yang tepat:")
+                    if opsi:
+                        user_ans = st.selectbox("Pasangan Jawaban:", ["-- Pilih Jawaban --"] + opsi, disabled=st.session_state.submitted, key="input_menjodohkan")
+                        if user_ans == "-- Pilih Jawaban --":
+                            user_ans = ""
+                    else:
+                        user_ans = st.text_input("Ketikkan jawaban pasangan Anda:", disabled=st.session_state.submitted, key="input_menjodohkan_txt")
+                    
+                elif tipe in ["PG", "PILIHAN GANDA", "BS", "BENAR SALAH"]:
+                    # Default index=None agar pilihan tidak tercentang otomatis
+                    user_ans = st.radio("Pilih jawaban:", opsi, index=None, disabled=st.session_state.submitted, key="input_pg")
+                    if user_ans is None:
                         user_ans = ""
+                    
                 else:
-                    user_ans = st.text_input("Ketikkan jawaban pasangan Anda:", disabled=st.session_state.submitted, key="input_menjodohkan_txt")
+                    user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_def")
+                    
+                st.markdown("---")
+                col_sub, col_next = st.columns([1, 1])
                 
-            elif tipe in ["PG", "PILIHAN GANDA", "BS", "BENAR SALAH"]:
-                # Default index=None agar tidak terisi secara otomatis
-                user_ans = st.radio("Pilih jawaban:", opsi, index=None, disabled=st.session_state.submitted, key="input_pg")
-                if user_ans is None:
-                    user_ans = ""
-                
-            else:
-                user_ans = st.text_input("Ketikkan jawaban Anda:", disabled=st.session_state.submitted, key="input_def")
-                
-            st.markdown("---")
-            col_sub, col_next = st.columns([1, 1])
-            
-            with col_sub:
-                if not st.session_state.submitted:
-                    if st.button(" Submit Jawaban", type="primary"):
-                        if str(user_ans).strip() == "":
-                            st.warning("Pilih atau isi jawaban terlebih dahulu!")
-                        else:
-                            durasi_soal = int(time.time() - st.session_state.soal_start_time)
-                            st.session_state.submitted = True
-                            st.session_state.user_answer = str(user_ans).strip()
-                            
-                            kunci = str(soal["Kunci_Jawaban"]).strip()
-                            
-                            if ";" in kunci:
-                                kunci_sorted = sorted([item.strip().lower() for item in kunci.split(";") if item.strip()])
-                            elif "(" in kunci and ")" in kunci:
-                                kunci_sorted = sorted([match.group(0).strip().lower() for match in re.finditer(r'\([^)]+\)', kunci)])
+                with col_sub:
+                    if not st.session_state.submitted:
+                        if st.button(" Submit Jawaban", type="primary"):
+                            if str(user_ans).strip() == "":
+                                st.warning("Pilih atau isi jawaban terlebih dahulu!")
                             else:
-                                kunci_sorted = sorted([item.strip().lower() for item in kunci.split(",") if item.strip()])
-
-                            user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(";") if item.strip()])
-                            
-                            if user_ans_sorted == kunci_sorted:
-                                st.session_state.is_correct = True
-                                st.session_state.correct_per_level[soal["Level"]] += 1
-                                status_txt = "BENAR"
-                                skor_val = 10
-                            else:
-                                st.session_state.is_correct = False
-                                status_txt = "SALAH"
-                                skor_val = 0
+                                durasi_soal = int(time.time() - st.session_state.soal_start_time)
+                                st.session_state.submitted = True
+                                st.session_state.user_answer = str(user_ans).strip()
                                 
-                            current_no = st.session_state.total_soal_dikerjakan + 1
-                            st.session_state.history.append({
-                                "no": current_no,
-                                "id_soal": soal["ID_Soal"],
-                                "level": soal["Level"],
-                                "jawaban": st.session_state.user_answer,
-                                "status": status_txt,
-                                "durasi": durasi_soal
-                            })
+                                kunci = str(soal["Kunci_Jawaban"]).strip()
+                                
+                                if ";" in kunci:
+                                    kunci_sorted = sorted([item.strip().lower() for item in kunci.split(";") if item.strip()])
+                                elif "(" in kunci and ")" in kunci:
+                                    kunci_sorted = sorted([match.group(0).strip().lower() for match in re.finditer(r'\([^)]+\)', kunci)])
+                                else:
+                                    kunci_sorted = sorted([item.strip().lower() for item in kunci.split(",") if item.strip()])
 
-                            send_log_to_sheets(
-                                nama=st.session_state.nama,
-                                kelas=st.session_state.kelas,
-                                sekolah=st.session_state.sekolah,
-                                id_soal=int(soal["ID_Soal"]),
-                                no_soal=current_no,
-                                jawaban=st.session_state.user_answer,
-                                status=status_txt,
-                                skor=skor_val,
-                                durasi_detik=durasi_soal
-                            )
+                                user_ans_sorted = sorted([item.strip().lower() for item in st.session_state.user_answer.split(";") if item.strip()])
+                                
+                                if user_ans_sorted == kunci_sorted:
+                                    st.session_state.is_correct = True
+                                    st.session_state.correct_per_level[soal["Level"]] += 1
+                                    status_txt = "BENAR"
+                                    skor_val = 10
+                                else:
+                                    st.session_state.is_correct = False
+                                    status_txt = "SALAH"
+                                    skor_val = 0
+                                    
+                                current_no = st.session_state.total_soal_dikerjakan + 1
+                                st.session_state.history.append({
+                                    "no": current_no,
+                                    "id_soal": soal["ID_Soal"],
+                                    "level": soal["Level"],
+                                    "jawaban": st.session_state.user_answer,
+                                    "status": status_txt,
+                                    "durasi": durasi_soal
+                                })
+
+                                send_log_to_sheets(
+                                    nama=st.session_state.nama,
+                                    kelas=st.session_state.kelas,
+                                    sekolah=st.session_state.sekolah,
+                                    id_soal=int(soal["ID_Soal"]),
+                                    no_soal=current_no,
+                                    jawaban=st.session_state.user_answer,
+                                    status=status_txt,
+                                    skor=skor_val,
+                                    durasi_detik=durasi_soal
+                                )
+                                st.rerun()
+
+                if st.session_state.submitted:
+                    if st.session_state.is_correct:
+                        st.success("✅ **Jawaban Anda BENAR!**")
+                    else:
+                        st.error("❌ **Jawaban Anda BELUM TEPAT.**")
+                        scaf = soal.get("Petunjuk_Scaffolding", "")
+                        if pd.notna(scaf) and str(scaf).strip() != "":
+                            st.info(f"💡 **Petunjuk Scaffolding:**\n\n{scaf}")
+                    
+                    with col_next:
+                        if st.button("Soal Selanjutnya ➡️"):
+                            next_question_action()
                             st.rerun()
-
-            if st.session_state.submitted:
-                if st.session_state.is_correct:
-                    st.success("✅ **Jawaban Anda BENAR!**")
-                else:
-                    st.error("❌ **Jawaban Anda BELUM TEPAT.**")
-                    scaf = soal.get("Petunjuk_Scaffolding", "")
-                    if pd.notna(scaf) and str(scaf).strip() != "":
-                        st.info(f"💡 **Petunjuk Scaffolding:**\n\n{scaf}")
-                
-                with col_next:
-                    if st.button("Soal Selanjutnya ➡️"):
-                        next_question_action()
-                        st.rerun()
 
     # ==========================================
     # HALAMAN DASHBOARD GURU
@@ -499,7 +488,7 @@ else:
         with tab1:
             col_ref1, col_ref2 = st.columns([3, 1])
             with col_ref1:
-                st.subheader("📈 Siswa Aktif & Log Pengerjaan Real-Time")
+                st.subheader("📈 Siswa Aktif & Log Pengerjaan")
             with col_ref2:
                 if st.button("🔄 Refresh Data Real-Time"):
                     st.rerun()
@@ -507,17 +496,19 @@ else:
             df_log = load_log_ujian_remote()
             
             if df_log.empty:
-                st.info("Belum ada data masuk dari Google Sheets atau siswa belum mengirimkan jawaban.")
+                st.info("Belum ada data masuk dari Google Sheets atau Web App URL belum terhubung sempurna.")
             else:
                 st.dataframe(df_log, use_container_width=True)
                 
-                csv_data = df_log.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Rekap Penilaian (CSV Excel)",
-                    data=csv_data,
-                    file_name="Rekap_Nilai_Siswa.csv",
-                    mime="text/csv"
-                )
+                # Export PDF Rekap Guru
+                if PDF_AVAILABLE:
+                    csv_data = df_log.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Data Rekap (CSV)",
+                        data=csv_data,
+                        file_name="Rekap_Nilai_Siswa.csv",
+                        mime="text/csv"
+                    )
 
         with tab2:
             st.subheader("📊 Data Bank Soal Aktif")
